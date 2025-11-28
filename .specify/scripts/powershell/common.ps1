@@ -38,18 +38,42 @@ function Get-CurrentBranch {
     if (Test-Path $specsDir) {
         $latestFeature = ""
         $highest = 0
+        $latestType = ""
         
+        # Check type subdirectories first (new pattern)
+        $validTypes = @('feature', 'fix', 'chore', 'docs', 'refactor', 'test', 'style', 'perf')
+        foreach ($type in $validTypes) {
+            $typeDir = Join-Path $specsDir $type
+            if (Test-Path $typeDir) {
+                Get-ChildItem -Path $typeDir -Directory | ForEach-Object {
+                    if ($_.Name -match '^(\d{3})-') {
+                        $num = [int]$matches[1]
+                        if ($num -gt $highest) {
+                            $highest = $num
+                            $latestFeature = $_.Name
+                            $latestType = $type
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Also check direct children (old pattern)
         Get-ChildItem -Path $specsDir -Directory | ForEach-Object {
             if ($_.Name -match '^(\d{3})-') {
                 $num = [int]$matches[1]
                 if ($num -gt $highest) {
                     $highest = $num
                     $latestFeature = $_.Name
+                    $latestType = ""
                 }
             }
         }
         
         if ($latestFeature) {
+            if ($latestType) {
+                return "$latestType/$latestFeature"
+            }
             return $latestFeature
         }
     }
@@ -79,9 +103,14 @@ function Test-FeatureBranch {
         return $true
     }
     
-    if ($Branch -notmatch '^[0-9]{3}-') {
-        Write-Output "ERROR: Not on a feature branch. Current branch: $Branch"
-        Write-Output "Feature branches should be named like: 001-feature-name"
+    # Support both old pattern (###-name) and new pattern (type/###-name)
+    $validTypes = @('feature', 'fix', 'chore', 'docs', 'refactor', 'test', 'style', 'perf')
+    $typePattern = ($validTypes -join '|')
+    
+    if ($Branch -notmatch "^($typePattern)/[0-9]{3}-" -and $Branch -notmatch '^[0-9]{3}-') {
+        Write-Output "ERROR: Not on a valid spec branch. Current branch: $Branch"
+        Write-Output "Spec branches should be named like: feature/001-feature-name or 001-feature-name"
+        Write-Output "Valid types: $($validTypes -join ', ')"
         return $false
     }
     return $true
@@ -89,7 +118,19 @@ function Test-FeatureBranch {
 
 function Get-FeatureDir {
     param([string]$RepoRoot, [string]$Branch)
-    Join-Path $RepoRoot "specs/$Branch"
+    
+    # Check if branch follows new pattern: type/###-name
+    $validTypes = @('feature', 'fix', 'chore', 'docs', 'refactor', 'test', 'style', 'perf')
+    $typePattern = ($validTypes -join '|')
+    
+    if ($Branch -match "^($typePattern)/(\d{3}-.+)$") {
+        $type = $matches[1]
+        $folderName = $matches[2]
+        return Join-Path $RepoRoot "specs/$type/$folderName"
+    }
+    
+    # Fall back to old pattern: ###-name (directly under specs/)
+    return Join-Path $RepoRoot "specs/$Branch"
 }
 
 function Get-FeaturePathsEnv {

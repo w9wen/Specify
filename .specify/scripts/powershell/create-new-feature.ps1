@@ -1,11 +1,15 @@
 #!/usr/bin/env pwsh
-# Create a new feature
+# Create a new spec (feature, fix, chore, etc.)
 [CmdletBinding()]
 param(
     [switch]$Json,
     [string]$ShortName,
     [int]$Number = 0,
     [switch]$Help,
+    [switch]$Interactive,
+    [ValidateSet('feature', 'fix', 'chore', 'docs', 'refactor', 'test', 'style', 'perf')]
+    [string]$Type,
+    [string]$Purpose,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$FeatureDescription
 )
@@ -13,27 +17,132 @@ $ErrorActionPreference = 'Stop'
 
 # Show help if requested
 if ($Help) {
-    Write-Host "Usage: ./create-new-feature.ps1 [-Json] [-ShortName <name>] [-Number N] <feature description>"
+    Write-Host "Usage: ./create-new-feature.ps1 [-Json] [-ShortName <name>] [-Number N] [-Type <type>] [-Purpose <purpose>] [-Interactive] <description>"
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Json               Output in JSON format"
     Write-Host "  -ShortName <name>   Provide a custom short name (2-4 words) for the branch"
     Write-Host "  -Number N           Specify branch number manually (overrides auto-detection)"
+    Write-Host "  -Type <type>        Branch type: feature, fix, chore, docs, refactor, test, style, perf"
+    Write-Host "  -Purpose <purpose>  Brief description of what this spec is for"
+    Write-Host "  -Interactive        Run in interactive mode with prompts"
     Write-Host "  -Help               Show this help message"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  ./create-new-feature.ps1 'Add user authentication system' -ShortName 'user-auth'"
-    Write-Host "  ./create-new-feature.ps1 'Implement OAuth2 integration for API'"
+    Write-Host "  ./create-new-feature.ps1 -Interactive"
+    Write-Host "  ./create-new-feature.ps1 -Type feature -Purpose 'Add login flow' 'user-auth'"
+    Write-Host "  ./create-new-feature.ps1 -Type fix 'Fix login timeout issue'"
     exit 0
 }
 
-# Check if feature description provided
-if (-not $FeatureDescription -or $FeatureDescription.Count -eq 0) {
-    Write-Error "Usage: ./create-new-feature.ps1 [-Json] [-ShortName <name>] <feature description>"
-    exit 1
+# Branch type descriptions for interactive mode
+$typeDescriptions = @{
+    'feature'  = 'New feature or enhancement'
+    'fix'      = 'Bug fix or error correction'
+    'chore'    = 'Maintenance tasks, dependencies, configs'
+    'docs'     = 'Documentation only changes'
+    'refactor' = 'Code refactoring without behavior change'
+    'test'     = 'Adding or updating tests'
+    'style'    = 'Code style, formatting changes'
+    'perf'     = 'Performance improvements'
 }
 
-$featureDesc = ($FeatureDescription -join ' ').Trim()
+# Always run interactive prompts at the beginning for missing required info
+Write-Host ""
+Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+Write-Host "║                     Create New Spec                          ║" -ForegroundColor Cyan
+Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host ""
+
+# Step 1: Always ask for type first if not provided
+if (-not $Type) {
+    Write-Host "Step 1: What type of branch is this?" -ForegroundColor Yellow
+    Write-Host ""
+    $typeOptions = @('feature', 'fix', 'chore', 'docs', 'refactor', 'test', 'style', 'perf')
+    for ($i = 0; $i -lt $typeOptions.Count; $i++) {
+        $t = $typeOptions[$i]
+        Write-Host "  [$($i + 1)] " -NoNewline -ForegroundColor Green
+        Write-Host "$t" -NoNewline -ForegroundColor White
+        Write-Host " - $($typeDescriptions[$t])" -ForegroundColor Gray
+    }
+    Write-Host ""
+    
+    do {
+        $selection = Read-Host "Enter your choice (1-8)"
+        $selNum = 0
+        $validSelection = [int]::TryParse($selection, [ref]$selNum) -and $selNum -ge 1 -and $selNum -le 8
+        if (-not $validSelection) {
+            Write-Host "Invalid selection. Please enter a number between 1 and 8." -ForegroundColor Red
+        }
+    } while (-not $validSelection)
+    
+    $Type = $typeOptions[$selNum - 1]
+    Write-Host ""
+    Write-Host "  ✓ Selected: $Type" -ForegroundColor Green
+} else {
+    Write-Host "Step 1: Branch type" -ForegroundColor Yellow
+    Write-Host "  ✓ Using: $Type" -ForegroundColor Green
+}
+
+# Step 2: Always ask for purpose/requirements if not provided
+if (-not $Purpose -and (-not $FeatureDescription -or $FeatureDescription.Count -eq 0)) {
+    Write-Host ""
+    Write-Host "Step 2: What is this spec for? (Brief description of the goal/requirement)" -ForegroundColor Yellow
+    Write-Host "        Example: 'Add user authentication with OAuth2 support'" -ForegroundColor Gray
+    Write-Host ""
+    
+    do {
+        $Purpose = Read-Host "Purpose"
+        if ([string]::IsNullOrWhiteSpace($Purpose)) {
+            Write-Host "Purpose cannot be empty. Please provide a description." -ForegroundColor Red
+        }
+    } while ([string]::IsNullOrWhiteSpace($Purpose))
+    
+    Write-Host ""
+    Write-Host "  ✓ Purpose set" -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "Step 2: Purpose/Requirements" -ForegroundColor Yellow
+    $displayPurpose = if ($Purpose) { $Purpose } else { ($FeatureDescription -join ' ').Trim() }
+    Write-Host "  ✓ Using: $displayPurpose" -ForegroundColor Green
+}
+
+# Step 3: Ask for short name if not provided
+if (-not $ShortName) {
+    Write-Host ""
+    Write-Host "Step 3: Provide a short name for the branch (2-4 words)" -ForegroundColor Yellow
+    Write-Host "        Press Enter to auto-generate from purpose" -ForegroundColor Gray
+    Write-Host "        Example: 'user-auth', 'login-fix', 'deps-update'" -ForegroundColor Gray
+    Write-Host ""
+    
+    $shortNameInput = Read-Host "Short name (optional)"
+    if (-not [string]::IsNullOrWhiteSpace($shortNameInput)) {
+        $ShortName = $shortNameInput
+        Write-Host ""
+        Write-Host "  ✓ Short name: $ShortName" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "  ✓ Will auto-generate from purpose" -ForegroundColor Green
+    }
+} else {
+    Write-Host ""
+    Write-Host "Step 3: Short name" -ForegroundColor Yellow
+    Write-Host "  ✓ Using: $ShortName" -ForegroundColor Green
+}
+
+Write-Host ""
+Write-Host "────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host ""
+
+# Build feature description from purpose or remaining arguments
+if ($Purpose) {
+    $featureDesc = $Purpose
+} elseif ($FeatureDescription -and $FeatureDescription.Count -gt 0) {
+    $featureDesc = ($FeatureDescription -join ' ').Trim()
+} else {
+    Write-Error "Description is required. This should not happen - please report this bug."
+    exit 1
+}
 
 # Resolve repository root. Prefer git information when available, but fall back
 # to searching for repository markers so the workflow still functions in repositories that
@@ -241,7 +350,7 @@ function Get-BranchName {
     }
 }
 
-# Generate branch name
+# Generate branch name suffix
 if ($ShortName) {
     # Use provided short name, just clean it up
     $branchSuffix = ConvertTo-CleanBranchName -Name $ShortName
@@ -250,27 +359,35 @@ if ($ShortName) {
     $branchSuffix = Get-BranchName -Description $featureDesc
 }
 
-# Determine branch number
+# Create the type-specific specs directory structure
+$typeSpecsDir = Join-Path $specsDir $Type
+New-Item -ItemType Directory -Path $typeSpecsDir -Force | Out-Null
+
+# Determine branch number (search within the type-specific directory)
 if ($Number -eq 0) {
     if ($hasGit) {
-        # Check existing branches on remotes
-        $Number = Get-NextBranchNumber -ShortName $branchSuffix -SpecsDir $specsDir
+        # Check existing branches on remotes (with type prefix)
+        $Number = Get-NextBranchNumber -ShortName "$Type/$branchSuffix" -SpecsDir $typeSpecsDir
     } else {
-        # Fall back to local directory check
-        $Number = (Get-HighestNumberFromSpecs -SpecsDir $specsDir) + 1
+        # Fall back to local directory check within type folder
+        $Number = (Get-HighestNumberFromSpecs -SpecsDir $typeSpecsDir) + 1
     }
 }
 
 $featureNum = ('{0:000}' -f $Number)
-$branchName = "$featureNum-$branchSuffix"
+# Branch name format: type/###-short-name (e.g., feature/001-user-auth)
+$branchName = "$Type/$featureNum-$branchSuffix"
+# Folder name format: ###-short-name (within type folder)
+$folderName = "$featureNum-$branchSuffix"
 
 # GitHub enforces a 244-byte limit on branch names
 # Validate and truncate if necessary
 $maxBranchLength = 244
 if ($branchName.Length -gt $maxBranchLength) {
     # Calculate how much we need to trim from suffix
-    # Account for: feature number (3) + hyphen (1) = 4 chars
-    $maxSuffixLength = $maxBranchLength - 4
+    # Account for: type/ + feature number (3) + hyphen (1)
+    $prefixLength = $Type.Length + 1 + 4  # type/ + ###-
+    $maxSuffixLength = $maxBranchLength - $prefixLength
     
     # Truncate suffix
     $truncatedSuffix = $branchSuffix.Substring(0, [Math]::Min($branchSuffix.Length, $maxSuffixLength))
@@ -278,7 +395,8 @@ if ($branchName.Length -gt $maxBranchLength) {
     $truncatedSuffix = $truncatedSuffix -replace '-$', ''
     
     $originalBranchName = $branchName
-    $branchName = "$featureNum-$truncatedSuffix"
+    $branchName = "$Type/$featureNum-$truncatedSuffix"
+    $folderName = "$featureNum-$truncatedSuffix"
     
     Write-Warning "[specify] Branch name exceeded GitHub's 244-byte limit"
     Write-Warning "[specify] Original: $originalBranchName ($($originalBranchName.Length) bytes)"
@@ -295,13 +413,25 @@ if ($hasGit) {
     Write-Warning "[specify] Warning: Git repository not detected; skipped branch creation for $branchName"
 }
 
-$featureDir = Join-Path $specsDir $branchName
+# Create folder under specs/<type>/<###-short-name>
+$featureDir = Join-Path $typeSpecsDir $folderName
 New-Item -ItemType Directory -Path $featureDir -Force | Out-Null
 
 $template = Join-Path $repoRoot '.specify/templates/spec-template.md'
 $specFile = Join-Path $featureDir 'spec.md'
 if (Test-Path $template) { 
-    Copy-Item $template $specFile -Force 
+    # Read template and replace placeholders
+    $templateContent = Get-Content $template -Raw
+    $templateContent = $templateContent -replace '\[FEATURE NAME\]', $featureDesc
+    $templateContent = $templateContent -replace '\[###-feature-name\]', $branchName
+    $templateContent = $templateContent -replace '\[DATE\]', (Get-Date -Format 'yyyy-MM-dd')
+    $templateContent = $templateContent -replace '\$ARGUMENTS', $featureDesc
+    
+    # Add type and purpose metadata
+    $typeHeader = "**Type**: ``$Type``  `n"
+    $templateContent = $templateContent -replace '(\*\*Feature Branch\*\*:)', "$typeHeader`$1"
+    
+    Set-Content -Path $specFile -Value $templateContent
 } else { 
     New-Item -ItemType File -Path $specFile | Out-Null 
 }
@@ -312,16 +442,32 @@ $env:SPECIFY_FEATURE = $branchName
 if ($Json) {
     $obj = [PSCustomObject]@{ 
         BRANCH_NAME = $branchName
+        BRANCH_TYPE = $Type
         SPEC_FILE = $specFile
+        FEATURE_DIR = $featureDir
         FEATURE_NUM = $featureNum
+        PURPOSE = $featureDesc
         HAS_GIT = $hasGit
     }
     $obj | ConvertTo-Json -Compress
 } else {
-    Write-Output "BRANCH_NAME: $branchName"
-    Write-Output "SPEC_FILE: $specFile"
-    Write-Output "FEATURE_NUM: $featureNum"
-    Write-Output "HAS_GIT: $hasGit"
-    Write-Output "SPECIFY_FEATURE environment variable set to: $branchName"
+    Write-Host ""
+    Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
+    Write-Host "║                    Spec Created Successfully                 ║" -ForegroundColor Green
+    Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Type:        " -NoNewline -ForegroundColor Cyan
+    Write-Host $Type -ForegroundColor White
+    Write-Host "  Branch:      " -NoNewline -ForegroundColor Cyan
+    Write-Host $branchName -ForegroundColor White
+    Write-Host "  Folder:      " -NoNewline -ForegroundColor Cyan
+    Write-Host "specs/$Type/$folderName" -ForegroundColor White
+    Write-Host "  Spec File:   " -NoNewline -ForegroundColor Cyan
+    Write-Host $specFile -ForegroundColor White
+    Write-Host "  Purpose:     " -NoNewline -ForegroundColor Cyan
+    Write-Host $featureDesc -ForegroundColor White
+    Write-Host ""
+    Write-Host "  SPECIFY_FEATURE environment variable set to: $branchName" -ForegroundColor DarkGray
+    Write-Host ""
 }
 
