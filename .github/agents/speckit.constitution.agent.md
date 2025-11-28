@@ -1,3 +1,4 @@
+````chatagent
 ---
 description: Create or update the project constitution from interactive or provided principle inputs, ensuring all dependent templates stay in sync.
 handoffs: 
@@ -14,13 +15,27 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Constitution File Location
+
+The constitution file location depends on how Specify is being used:
+
+1. **Parent Project (Submodule Usage)**: `.specify-local/constitution.md` in the parent project root
+2. **Standalone/Template**: `.specify/memory/constitution-template.md` in the Specify root
+
+**Priority**: Always check for `.specify-local/constitution.md` first. If it doesn't exist:
+- If working on a parent project, create it by copying from the template
+- If working on Specify itself, update the template at `.specify/memory/constitution-template.md`
+
 ## Outline
 
-You are updating the project constitution at `.specify/memory/constitution.md`. This file is a TEMPLATE containing placeholder tokens in square brackets (e.g. `[PROJECT_NAME]`, `[PRINCIPLE_1_NAME]`). Your job is to (a) collect/derive concrete values, (b) fill the template precisely, and (c) propagate any amendments across dependent artifacts.
+You are updating the project constitution. This file is a TEMPLATE containing placeholder tokens in square brackets (e.g. `[PROJECT_NAME]`, `[PRINCIPLE_1_NAME]`). Your job is to (a) collect/derive concrete values, (b) fill the template precisely, and (c) propagate any amendments across dependent artifacts.
 
 Follow this execution flow:
 
-1. Load the existing constitution template at `.specify/memory/constitution.md`.
+1. Locate the constitution file:
+   - First check: `.specify-local/constitution.md` (parent project's custom constitution)
+   - Fallback: `.specify/memory/constitution-template.md` (template)
+   - If neither exists, copy template to `.specify-local/constitution.md` first
    - Identify every placeholder token of the form `[ALL_CAPS_IDENTIFIER]`.
    **IMPORTANT**: The user might require less or more principles than the ones used in the template. If a number is specified, respect that - follow the general template. You will update the doc accordingly.
 
@@ -41,7 +56,7 @@ Follow this execution flow:
    - Ensure Governance section lists amendment procedure, versioning policy, and compliance review expectations.
 
 4. Consistency propagation checklist (convert prior checklist into active validations):
-   - Read `.specify/templates/plan-template.md` and ensure any "Constitution Check" or rules align with updated principles.
+   - Read `.specify/templates/plan-template.md` (in Specify submodule if applicable) and ensure any "Constitution Check" or rules align with updated principles.
    - Read `.specify/templates/spec-template.md` for scope/requirements alignment—update if constitution adds/removes mandatory sections or constraints.
    - Read `.specify/templates/tasks-template.md` and ensure task categorization reflects new or removed principle-driven task types (e.g., observability, versioning, testing discipline).
    - Read each command file in `.specify/templates/commands/*.md` (including this one) to verify no outdated references (agent-specific names like CLAUDE only) remain when generic guidance is required.
@@ -61,7 +76,9 @@ Follow this execution flow:
    - Dates ISO format YYYY-MM-DD.
    - Principles are declarative, testable, and free of vague language ("should" → replace with MUST/SHOULD rationale where appropriate).
 
-7. Write the completed constitution back to `.specify/memory/constitution.md` (overwrite).
+7. Write the completed constitution:
+   - For parent projects: `.specify-local/constitution.md`
+   - For Specify itself: `.specify/memory/constitution-template.md`
 
 8. Output a final summary to the user with:
    - New version and bump rationale.
@@ -79,4 +96,4 @@ If the user supplies partial updates (e.g., only one principle revision), still 
 
 If critical info missing (e.g., ratification date truly unknown), insert `TODO(<FIELD_NAME>): explanation` and include in the Sync Impact Report under deferred items.
 
-Do not create a new template; always operate on the existing `.specify/memory/constitution.md` file.
+````

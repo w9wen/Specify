@@ -1,7 +1,71 @@
 #!/usr/bin/env pwsh
 # Common PowerShell functions analogous to common.sh
 
+# Get the Specify submodule root (where this toolkit lives)
+function Get-SpecifyRoot {
+    return (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
+}
+
+# Get the parent project root (the project using Specify as submodule)
+# Falls back to Specify root if not used as submodule
+function Get-ParentProjectRoot {
+    $specifyRoot = Get-SpecifyRoot
+    $potentialParent = (Resolve-Path (Join-Path $specifyRoot "..") -ErrorAction SilentlyContinue).Path
+    
+    # Check if we're actually a submodule by looking for common project indicators
+    if ($potentialParent -and (
+        (Test-Path (Join-Path $potentialParent ".git")) -or
+        (Test-Path (Join-Path $potentialParent ".specify-local")) -or
+        (Test-Path (Join-Path $potentialParent "specs"))
+    )) {
+        return $potentialParent
+    }
+    
+    # Not a submodule, return Specify root
+    return $specifyRoot
+}
+
+# Get the constitution file path
+# Priority: 1. Parent's .specify-local/constitution.md
+#           2. Specify's template (as fallback)
+function Get-ConstitutionPath {
+    $parentRoot = Get-ParentProjectRoot
+    $specifyRoot = Get-SpecifyRoot
+    
+    # First check parent project's local constitution
+    $parentConstitution = Join-Path $parentRoot ".specify-local/constitution.md"
+    if (Test-Path $parentConstitution) {
+        return @{
+            Path = $parentConstitution
+            IsTemplate = $false
+            Source = "project"
+        }
+    }
+    
+    # Fall back to template
+    $templateConstitution = Join-Path $specifyRoot ".specify/memory/constitution-template.md"
+    if (Test-Path $templateConstitution) {
+        return @{
+            Path = $templateConstitution
+            IsTemplate = $true
+            Source = "template"
+        }
+    }
+    
+    return $null
+}
+
+# Get the specs directory (in parent project if submodule, otherwise in Specify root)
+function Get-SpecsDir {
+    $parentRoot = Get-ParentProjectRoot
+    return Join-Path $parentRoot "specs"
+}
+
 function Get-RepoRoot {
+    # When used as submodule, return parent project root
+    # This maintains backward compatibility
+    $parentRoot = Get-ParentProjectRoot
+    
     try {
         $result = git rev-parse --show-toplevel 2>$null
         if ($LASTEXITCODE -eq 0) {
@@ -11,8 +75,7 @@ function Get-RepoRoot {
         # Git command failed
     }
     
-    # Fall back to script location for non-git repos
-    return (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
+    return $parentRoot
 }
 
 function Get-CurrentBranch {

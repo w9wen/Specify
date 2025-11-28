@@ -282,7 +282,26 @@ function ConvertTo-CleanBranchName {
     
     return $Name.ToLower() -replace '[^a-z0-9]', '-' -replace '-{2,}', '-' -replace '^-', '' -replace '-$', ''
 }
-$fallbackRoot = (Find-RepositoryRoot -StartDir $PSScriptRoot)
+
+# Import common functions
+. (Join-Path $PSScriptRoot "common.ps1")
+
+# Determine roots - support submodule usage
+$specifyRoot = Get-SpecifyRoot
+$parentRoot = Get-ParentProjectRoot
+$isSubmodule = $specifyRoot -ne $parentRoot
+
+# Check for constitution and warn if using template
+$constitution = Get-ConstitutionPath
+if ($constitution) {
+    if ($constitution.IsTemplate) {
+        Write-Host "  ⚠ Using template constitution. Run setup-parent-project.ps1 to customize." -ForegroundColor Yellow
+    }
+} else {
+    Write-Warning "No constitution found. Run setup-parent-project.ps1 to set up your project."
+}
+
+$fallbackRoot = $parentRoot
 if (-not $fallbackRoot) {
     Write-Error "Error: Could not determine repository root. Please run this script from within the repository."
     exit 1
@@ -292,6 +311,7 @@ try {
     $repoRoot = git rev-parse --show-toplevel 2>$null
     if ($LASTEXITCODE -eq 0) {
         $hasGit = $true
+        # If submodule, use parent root for specs, but keep git root for branch operations
     } else {
         throw "Git not available"
     }
@@ -302,8 +322,13 @@ try {
 
 Set-Location $repoRoot
 
-$specsDir = Join-Path $repoRoot 'specs'
+# Use parent project's specs directory (works for both submodule and standalone)
+$specsDir = Get-SpecsDir
 New-Item -ItemType Directory -Path $specsDir -Force | Out-Null
+
+if ($isSubmodule) {
+    Write-Host "  ℹ Running as submodule, specs will be created in: $specsDir" -ForegroundColor DarkGray
+}
 
 # Function to generate branch name with stop word filtering and length filtering
 function Get-BranchName {
@@ -417,7 +442,8 @@ if ($hasGit) {
 $featureDir = Join-Path $typeSpecsDir $folderName
 New-Item -ItemType Directory -Path $featureDir -Force | Out-Null
 
-$template = Join-Path $repoRoot '.specify/templates/spec-template.md'
+# Use template from Specify submodule
+$template = Join-Path $specifyRoot '.specify/templates/spec-template.md'
 $specFile = Join-Path $featureDir 'spec.md'
 if (Test-Path $template) { 
     # Read template and replace placeholders
